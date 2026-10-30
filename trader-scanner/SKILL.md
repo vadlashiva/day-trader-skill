@@ -102,6 +102,9 @@ A hit with a missing bar between the range and its breakout bar is marked
 `[time uncertain: N bars missing before it]`: the breakout is real, but the
 first close above may have come up to N bars earlier. Hits without the mark
 have exact times. In `--json`, each hit carries `missing_before`.
+When telling the user, call only the marked hits uncertain. A chart whose
+gaps came after its breakout bar has an exact time; do not lump it in with
+the gap count.
 A chart missing an opening-range bar is skipped (the range cannot be known). Null closes are
 dropped, a bar off the 5-minute grid (the live tick) is dropped, and a bar
 counts only once it is complete (start + 5 minutes). Before the range is

@@ -956,7 +956,8 @@ def cmd_orb(a):
              "{:,}".format(counts["candidates"]), "{:,}".format(counts["confirmed"])))
     if counts["with_gaps"]:
         print("%d of the usable charts had 1 to %d bars missing in Yahoo's data after the range; "
-              "missing bars are skipped." % (counts["with_gaps"], MAX_GAPS))
+              "missing bars are skipped. A hit's time is affected only if it is marked [time uncertain] below."
+              % (counts["with_gaps"], MAX_GAPS))
     if counts["unusable"]:
         print("%d charts skipped: an opening-range bar missing, or more than %d bars missing after it."
               % (counts["unusable"], MAX_GAPS))
@@ -973,7 +974,9 @@ def cmd_orb(a):
                 h["at"], h["symbol"], money(h["price"]), _p(h["or_low"]), _p(h["or_high"]), h["pct_over"],
                 ("  [time uncertain: %d bar%s missing before it]" % (mb, "" if mb == 1 else "s")) if mb else ""))
         unsure = sum(1 for h in hits if h.get("missing_before"))
-        if unsure:
+        if not unsure:
+            print("Every hit's time is exact: no bar is missing between the range and any breakout bar.")
+        else:
             print("%d of the %d hits %s a missing bar before the breakout bar: the real first close above "
                   "may have come that many 5-minute bars earlier.%s"
                   % (unsure, len(hits), "has" if unsure == 1 else "have",
