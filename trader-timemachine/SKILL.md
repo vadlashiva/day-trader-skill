@@ -32,16 +32,16 @@ good-looking replay does not change that.
 ```bash
 python3 "${CLAUDE_SKILL_DIR}/timemachine.py" run                    # trader/plan.json, 10,000 replays, seed 19
 python3 "${CLAUDE_SKILL_DIR}/timemachine.py" run --write            # also save trader/timemachine.json
-python3 "${CLAUDE_SKILL_DIR}/timemachine.py" run --until 15:55      # end each replay at your flat-by time
+python3 "${CLAUDE_SKILL_DIR}/timemachine.py" run --until 15:15      # end each replay at your flat-by time
 python3 "${CLAUDE_SKILL_DIR}/timemachine.py" run --json
-python3 "${CLAUDE_SKILL_DIR}/timemachine.py" run --symbol TSLA --date 2026-10-19 \
-    --entry 364.18 --stop 358.32 --target 370.04 --entry-time "10:15 AM"
+python3 "${CLAUDE_SKILL_DIR}/timemachine.py" run --symbol RELIANCE --date 2026-10-29 \
+    --entry 1174.30 --stop 1163.35 --target 1185.25 --entry-time "9:40 AM"
 python3 "${CLAUDE_SKILL_DIR}/timemachine.py" chart --from           # ASCII fan chart of the saved run
 ```
 
 Other flags: `--replays N`, `--seed N` (default 19), `--window N` (default 2
 bars), `--offline FILE` (a saved Yahoo chart JSON, `.json` or `.json.gz`),
-`--now "2026-10-19 10:15"` (New York time) to pin the clock.
+`--now "2026-10-29 10:15"` (India time (IST)) to pin the clock.
 
 ## What it reads and writes
 
@@ -54,7 +54,7 @@ bars), `--offline FILE` (a saved Yahoo chart JSON, `.json` or `.json.gz`),
 ## How it works
 
 1. **The pool.** It keeps only FULL sessions before the plan's date: all 78
-   five-minute bars, 9:30 to 4:00 New York time. Half days, gaps and today
+   five-minute bars, 9:30 to 4:00 India time (IST). Half days, gaps and today
    are left out. Every bar becomes four ratios to the bar before it:
    open, high, low and close over the previous close.
 2. **One replay.** Start at the entry price. For each bar left in the day,
@@ -62,8 +62,8 @@ bars), `--offline FILE` (a saved Yahoo chart JSON, `.json` or `.json.gz`),
    random, and scale it to the current price. Bar by bar, it checks the stop
    first, then the target. A bar that touches both counts as the stop.
 3. **10,000 replays** give four odds. Target first. Stop first. Neither,
-   which means the trade was still open at `--until` (default 4:00 PM, the
-   close, or 1:00 PM on an NYSE early-close day). Green, which means target
+   which means the trade was still open at `--until` (default 3:15 PM, see
+   below why not 3:30). Green, which means target
    first or above the entry at `--until`.
    R is +1 at a 1R target, -1 at the stop, and otherwise the distance from
    the entry at `--until` divided by the risk. A gap through the stop still
@@ -100,7 +100,7 @@ grid). A live in-progress bar is never used.
 
 1. Make sure `trader/plan.json` is today's plan from `/trader-exit`. If there
    is none, run that first, or pass the plan as flags.
-2. Run `timemachine.py run --write`. Add `--until 15:55` when the plan has a
+2. Run `timemachine.py run --write`. Add `--until 15:15` when the plan has a
    flat-by time, so "neither" means still open at the time you would get out.
 3. Tell the user, in this order: the four odds, the median and the 5 to 95
    range of the price at the close, the average R, the history line, then the
@@ -112,30 +112,29 @@ grid). A live in-progress bar is never used.
    `/trader-news` for the stock before going on.
 6. If the user still wants the trade, hand off to `/trader-budget` to size it.
 
-## Example: the reel
+## Example
 
-TSLA, Monday 2026-10-19. The 15-minute opening range is 354.47 to 362.18.
-The 10:10 bar closes above it: entry 364.18 at 10:15 AM (bar 8), stop 358.32
-(the range midpoint, rounded down), target 370.04 (1R, risk 5.86 a share).
+RELIANCE, Thursday 29 October 2026: entry 1,174.30 at 9:40 AM, stop 1,163.35
+(range midpoint), target 1,185.25 (1R). `timemachine.py run` fetches the last
+60 days of 5-minute bars and prints:
 
 ```
-10,000 replays of the rest of the session, 10:15 AM to 4:00 PM (69 five-minute bars), seed 19.
-  target first   29.4 %
-  stop first     25.5 %
-  neither        45.1 %   still open at 4:00 PM
-  green          51.7 %   target first, or above the entry at 4:00 PM
-  Price at 4:00 PM: median 364.36, 90 % of replays between 355.54 and 373.54.
-  Average R: +0.034
-History: the same rule on each of those 59 real sessions fired 33 times:
-13 target, 15 stop, 5 neither. Average R -0.062.
-Close to a coin flip: target first 29.4 % vs stop first 25.5 %.
-45.1 % of the replays hit neither by 4:00 PM; the price at 4:00 PM decides those.
+  target first   xx.x %
+  stop first     xx.x %
+  neither        xx.x %    still open at 3:15 PM
+  green          xx.x %   target first, or above the entry at 3:15 PM
+  Price at 3:15 PM: median ..., 90 % of replays between ... and ...
+History: the same rule on each of those real sessions fired N times: a target, b stop, c neither.
 ```
 
-At 1R the target has to come first in half of the replays that hit one
-side. It did in 53.6 %. The replays came out close to a coin flip, and the
-real history was slightly worse than even. That is the honest answer for this setup, and it is what
-the user should hear before `/trader-budget` sizes 8 shares.
+Read the numbers off the real run, never from this page. The test suite runs
+the same command on a synthetic history built from the real 29 October
+session (`tests/test_nse.py`), only to check the mechanics.
+
+Why 3:15 PM: NSE trades to 3:30 PM, but Yahoo's last three 5-minute bars
+(3:15 to 3:25) are empty on most days, and brokers square off intraday
+positions from about 3:20 PM. So a full session here is 72 bars, 9:15 to
+3:15, and every replay ends there.
 
 ## Rules
 
@@ -159,10 +158,9 @@ into the pool.
 ## Safety
 
 - Education and tooling, not financial advice. A PASS is a rules check, not a recommendation.
-- Paper trading by default (`"paper": true`). Going live is the user's own decision, in their own config.
-- Nothing in this pack places an order except trader-broker, and only when all three hold: trader-risk
-  passed that exact order today, the user typed an explicit yes for that one order in the chat, and the
-  user clicked Allow once on Claude's own card because the order tool is set to "Needs approval"
-  (Customize > Connectors > tool permissions). Never set an order tool to "Always allow".
-- No options, margin, short selling or leverage unless the config allows it and the user confirms.
-- Broker keys live in environment variables or the Claude Desktop config, never in the chat.
+- NSE edition: paper trading only. No broker is connected, and nothing in this pack sends an order
+  anywhere. trader-broker records a paper trade only when trader-risk passed that exact order today and
+  the user typed an explicit yes for that one order in the chat.
+- Cash-market stocks and ETFs only: no options, futures, margin, short selling or leverage.
+- If a real broker (for example Angel One SmartAPI) is ever connected, its keys live in environment
+  variables on the user's computer, never in the chat, and every order still needs the user's yes.

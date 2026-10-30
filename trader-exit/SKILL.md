@@ -30,11 +30,11 @@ and a neat plan does not change that.
 python3 "${CLAUDE_SKILL_DIR}/exit.py" plan                          # trader/entry.json: midpoint stop, 2R target
 python3 "${CLAUDE_SKILL_DIR}/exit.py" plan --stop or-mid --target 1R --write
 python3 "${CLAUDE_SKILL_DIR}/exit.py" plan --stop atr:1.5           # needs the session's bars (Yahoo or --offline)
-python3 "${CLAUDE_SKILL_DIR}/exit.py" plan --symbol TSLA --entry 364.18 --or-high 362.18 --or-low 354.47
+python3 "${CLAUDE_SKILL_DIR}/exit.py" plan --symbol RELIANCE --entry 1174.30 --or-high 1170.50 --or-low 1156.20
 python3 "${CLAUDE_SKILL_DIR}/exit.py" show                          # the current trader/plan.json
 ```
 
-Other flags: `--flat-by 15:55`, `--json`, `--now "2026-10-19 10:15"` (New
+Other flags: `--flat-by 15:15`, `--json`, `--now "2026-10-29 10:15"` (New
 York time), `--entry PRICE` with a waiting entry.json to plan ahead, `--setup
 level`, `--offline FILE` (a saved Yahoo chart JSON for an ATR stop).
 
@@ -43,7 +43,7 @@ level`, `--offline FILE` (a saved Yahoo chart JSON for an ATR stop).
 | file | what |
 | --- | --- |
 | `trader/entry.json` | the trigger from trader-entry: symbol, entry price, time, bar, opening range |
-| `trader/config.json` | `flat_by` (15:55) and `min_reward_risk` (1.0: a note here, trader-risk enforces it) |
+| `trader/config.json` | `flat_by` (15:15) and `min_reward_risk` (1.0: a note here, trader-risk enforces it) |
 | Yahoo chart API | only for an `atr:K` stop: the session's bars up to the entry bar, free and unofficial |
 | `trader/plan.json` | with `--write`: entry, stop and its rule, target and its R, risk a share, reward:risk, flat by. trader-timemachine, trader-budget and trader-alerts read it |
 
@@ -66,9 +66,9 @@ A level setup has no opening range to lean on, so it needs a stop you name.
   below it. A risk under 0.05% of the price: too tight to survive the
   spread, normal wiggle would stop you out. An entry.json that has not
   triggered (unless you give `--entry`). A short: v2 plans longs only.
-- **Flat by.** 15:55 by default (or `flat_by` in the config). Out by then,
-  win or lose, no overnight hold. On a 1:00 p.m. early close it moves up to
-  12:55. An entry at or after the flat-by time is refused.
+- **Flat by.** 15:15 by default (or `flat_by` in the config). Out by then,
+  win or lose, no overnight hold (brokers square off intraday positions from
+  about 15:20). An entry at or after the flat-by time is refused.
 
 ## Steps
 
@@ -86,24 +86,24 @@ A level setup has no opening range to lean on, so it needs a stop you name.
    the target and the flat-by time. Claude can keep `entry.py watch` running
    in the background or on a `/loop` until a setup triggers, then come here.
 
-## Example: the reel
+## Example: RELIANCE, Thursday 29 October 2026
 
-TSLA, Monday 2026-10-19. The entry is 364.18 at 10:15 AM (the 10:10 bar,
-bar 8) and the opening range is 354.47 to 362.18. `exit.py plan --stop
-or-mid --target 1R --write`:
+The entry is 1,174.30 at 9:40 AM (the 9:35 bar, bar 4) and the opening range
+is 1,156.20 to 1,170.50. `exit.py plan --from trader/entry.json --stop or-mid --target 1R --write`:
 
 ```
-Exit plan: TSLA long, Mon 2026-10-19, opening-range breakout on 5-minute bars
-  Entry         $364.18 at 10:15 AM (bar 8)
-  Stop          $358.32  opening-range midpoint: ($362.18 + $354.47) / 2 = $358.325, rounded down
-  Target        $370.04  1R (one times the risk)
-  Risk a share  $5.86 (1.61% of the entry)
+Exit plan: RELIANCE.NS long, Thu 2026-10-29, opening-range breakout on 5-minute bars
+  Entry         Rs 1,174.30 at 9:40 AM (bar 4)
+  Stop          Rs 1,163.35  opening-range midpoint: (Rs 1,170.50 + Rs 1,156.20) / 2 = Rs 1163.35
+  Target        Rs 1,185.25  1R (one times the risk)
+  Risk a share  Rs 10.95 (0.93% of the entry)
   Reward:risk   1.0
-  Flat by       15:55 ET, win or lose: no overnight hold
+  Flat by       15:15 IST, win or lose: no overnight hold
 ```
 
-The default 2R target would be 364.18 + 2 x 5.86 = 375.90. trader-budget then
-sizes it: a $50 max loss per trade buys floor(50 / 5.86) = 8 shares.
+The default 2R target would be 1,174.30 + 2 x 10.95 = 1,196.20. trader-budget
+then sizes it: a Rs 1,000 max loss per trade allows floor(1000 / 10.95) = 91
+shares, before the other limits.
 
 ## Rules
 
@@ -123,10 +123,9 @@ make a plan pass, and never calls a stop a guarantee.
 ## Safety
 
 - Education and tooling, not financial advice. A PASS is a rules check, not a recommendation.
-- Paper trading by default (`"paper": true`). Going live is the user's own decision, in their own config.
-- Nothing in this pack places an order except trader-broker, and only when all three hold: trader-risk
-  passed that exact order today, the user typed an explicit yes for that one order in the chat, and the
-  user clicked Allow once on Claude's own card because the order tool is set to "Needs approval"
-  (Customize > Connectors > tool permissions). Never set an order tool to "Always allow".
-- No options, margin, short selling or leverage unless the config allows it and the user confirms.
-- Broker keys live in environment variables or the Claude Desktop config, never in the chat.
+- NSE edition: paper trading only. No broker is connected, and nothing in this pack sends an order
+  anywhere. trader-broker records a paper trade only when trader-risk passed that exact order today and
+  the user typed an explicit yes for that one order in the chat.
+- Cash-market stocks and ETFs only: no options, futures, margin, short selling or leverage.
+- If a real broker (for example Angel One SmartAPI) is ever connected, its keys live in environment
+  variables on the user's computer, never in the chat, and every order still needs the user's yes.
