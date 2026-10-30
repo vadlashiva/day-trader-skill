@@ -147,6 +147,35 @@ class RealBars(unittest.TestCase):
         self.assertIn("15-minute range (9:15 to", out)
         self.assertIn("RELIANCE.NS Rs 1,174.30", out)
 
+    def test_orb_tolerates_a_few_missing_bars(self):
+        s = load("trader-scanner", "scan")
+        with open(CHART) as fh:
+            doc = json.load(fh)
+        day = datetime.date(2026, 10, 29)
+        cutoff = datetime.datetime(2026, 10, 29, 11, 0)
+
+        def with_holes(times):
+            series = s.parse_chart(json.loads(json.dumps(doc)))
+            for i, ts in enumerate(series["t"]):
+                if s.ts_to_eastern(ts).strftime("%H:%M") in times:
+                    series["c"][i] = None
+            return s.session_bars(series, day, cutoff)
+
+        full = with_holes(())
+        self.assertTrue(s.usable(full, day, cutoff, 3))
+        self.assertEqual(s.gaps(full, day, cutoff), 0)
+        two = with_holes(("10:00", "10:30"))  # Yahoo's odd empty bars: still scanned
+        self.assertTrue(s.usable(two, day, cutoff, 3))
+        self.assertEqual(s.gaps(two, day, cutoff), 2)
+        hit = s.orb_hit(two, 3)
+        self.assertEqual((hit["price"], hit["at"], hit["bar_index"]), (1174.3, "9:40 AM", 4))
+        self.assertTrue(s.usable(with_holes(("10:00", "10:30", "10:45")), day, cutoff, 3))  # three is the limit
+        self.assertFalse(s.usable(with_holes(("10:00", "10:30", "10:45", "10:50")), day, cutoff, 3))  # too many
+        self.assertFalse(s.usable(with_holes(("09:20",)), day, cutoff, 3))  # a range bar missing
+        # a missing breakout bar is skipped, never guessed: the next bar above the high is the hit
+        hit = s.orb_hit(with_holes(("09:35",)), 3)
+        self.assertEqual(hit["bar_start"], "09:40")
+
     def test_timemachine_keeps_sessions_with_empty_closing_bars(self):
         tm = load("trader-timemachine", "timemachine")
         with open(CHART) as fh:

@@ -94,8 +94,11 @@ CLOSE above the range high, at that bar's close time.
    request each. Range high = the highest high of the range bars, range low =
    the lowest low.
 
-A chart is usable only when every 5-minute bar from 9:15 to the cutoff is
-there; a missing bar means a halt or a gap in Yahoo's data. Null closes are
+A chart is usable when all its opening-range bars (9:15 onward) are there
+and no more than 3 later bars are missing. Yahoo's NSE data leaves an odd
+5-minute bar empty in most stocks on most days; a missing bar is skipped,
+never read as a breakout, and the scan says how many usable charts had gaps.
+A chart missing an opening-range bar is skipped (the range cannot be known). Null closes are
 dropped, a bar off the 5-minute grid (the live tick) is dropped, and a bar
 counts only once it is complete (start + 5 minutes). Before the range is
 done, on a weekend or NSE holiday, after the close, or after

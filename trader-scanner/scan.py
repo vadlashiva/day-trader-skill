@@ -33,9 +33,9 @@ orb       Opening-range breakouts, 5-minute bars. The range is the first
           range bars, a hit = the first completed bar to CLOSE above it, at that
           bar's close time. Stage 2 fetches at most --max-confirm (200) charts,
           the most traded candidates first (price x volume so far), and says
-          so when it stops short. A chart is usable only when every 5-minute
-          bar from 9:15 to the cutoff is there (a missing bar is a halt or no
-          trades). Floors: --min-price 5 (last close), --min-volume 0.
+          so when it stops short. A chart is usable when all its opening-range
+          bars are there and at most MAX_GAPS (3) later bars are missing
+          (Yahoo leaves an odd NSE bar empty; a missing bar is skipped). Floors: --min-price 5 (last close), --min-volume 0.
 
 Bars: null closes are dropped, a bar off the 5-minute grid (the live tick,
 like 10:49:45) is dropped, and a bar counts only once it is complete
@@ -113,6 +113,7 @@ SLEEP = time.sleep  # tests swap this out
 BAR_MIN = 5
 MAX_CONFIRM = 200   # stage-2 v8 charts per orb scan, most traded first
 MIN_DAILY_BARS = 30
+MAX_GAPS = 3        # missing 5-minute bars allowed after the opening range (Yahoo drops some on NSE)
 DEFAULT_UNIVERSE = "trader/universe.txt"
 NOTE = "A scan is a list of charts that match a rule, not a list of stocks to buy."
 
@@ -538,16 +539,31 @@ def session_bars(series, day, cutoff):
     return [out[k] for k in sorted(out)]
 
 
-def usable(bars, day, cutoff, n_range):
-    """Every slot from 9:15 to the cutoff is there, and at least the range."""
+def expected_bars(day, cutoff):
+    """How many 5-minute bars from 9:15 are complete at the cutoff."""
     want = int((cutoff - slot(day, 0)).total_seconds() // (BAR_MIN * 60))
     s = session(day)
     if s:
         want = min(want, int((datetime.datetime.combine(day, s[1]) - slot(day, 0)).total_seconds()
                              // (BAR_MIN * 60)))
-    if want < n_range or len(bars) != want:
+    return want
+
+
+def gaps(bars, day, cutoff):
+    """Bars missing between 9:15 and the cutoff."""
+    return max(0, expected_bars(day, cutoff) - len(bars))
+
+
+def usable(bars, day, cutoff, n_range, max_gaps=MAX_GAPS):
+    """Every opening-range bar is there (9:15 onward, n_range of them), at least one bar
+    after the range, and no more than max_gaps bars missing after it. A missing bar is
+    skipped, never read as a breakout. Yahoo leaves an odd NSE bar empty most days."""
+    want = expected_bars(day, cutoff)
+    if want <= n_range or len(bars) <= n_range:
         return False
-    return all(b["start"] == slot(day, k) for k, b in enumerate(bars))
+    if any(bars[k]["start"] != slot(day, k) for k in range(n_range)):
+        return False
+    return gaps(bars, day, cutoff) <= max_gaps
 
 
 def orb_candidate(bars, n_range):
@@ -569,7 +585,8 @@ def orb_hit(bars, n_range):
         if b["c"] > oh:
             closes_at = b["start"] + datetime.timedelta(minutes=BAR_MIN)
             return {"price": round(b["c"], 2), "at": clock_label(closes_at),
-                    "bar_start": b["start"].strftime("%H:%M"), "bar_index": k,
+                    "bar_start": b["start"].strftime("%H:%M"),
+                    "bar_index": int((b["start"] - bars[0]["start"]).total_seconds() // (BAR_MIN * 60)),
                     "or_high": round(oh, 2), "or_low": round(ol, 2),
                     "pct_over": round((b["c"] / oh - 1) * 100, 2), "_t": closes_at}
     return None
@@ -622,7 +639,7 @@ def scan_orb(stage1, symbols, day, cutoff, or_minutes, min_price=0.0, min_volume
     Returns (hits, counts, failed {sym: why})."""
     n_range = or_minutes // BAR_MIN
     counts = {"requested": len(symbols), "fetched": 0, "unusable": 0, "illiquid": 0, "scanned": 0,
-              "candidates": 0, "confirmed": 0, "unconfirmed": 0}
+              "candidates": 0, "confirmed": 0, "unconfirmed": 0, "with_gaps": 0}
     hits, failed, cands = [], {}, []
     for sym in symbols:
         s = stage1.get(sym)
@@ -638,6 +655,8 @@ def scan_orb(stage1, symbols, day, cutoff, or_minutes, min_price=0.0, min_volume
             counts["illiquid"] += 1
             continue
         counts["scanned"] += 1
+        if gaps(bars, day, cutoff):
+            counts["with_gaps"] += 1
         if orb_candidate(bars, n_range):
             cands.append((sym, bars, bars[-1]["c"] * vol))
     counts["candidates"] = len(cands)
@@ -655,7 +674,7 @@ def scan_orb(stage1, symbols, day, cutoff, or_minutes, min_price=0.0, min_volume
                 continue
             full = session_bars(s2, day, cutoff)
             if not usable(full, day, cutoff, n_range):
-                failed[sym] = "the v8 chart has a missing bar"
+                failed[sym] = "the v8 chart misses an opening-range bar or more than %d later bars" % MAX_GAPS
                 continue
         counts["confirmed"] += 1
         h = orb_hit(full, n_range)
@@ -931,6 +950,12 @@ def cmd_orb(a):
              "{:,}".format(counts["scanned"]),
              (" (%s under the price / volume floor)" % "{:,}".format(counts["illiquid"])) if counts["illiquid"] else "",
              "{:,}".format(counts["candidates"]), "{:,}".format(counts["confirmed"])))
+    if counts["with_gaps"]:
+        print("%d of the usable charts had 1 or %d bars missing in Yahoo's data after the range; "
+              "missing bars are skipped." % (counts["with_gaps"], MAX_GAPS))
+    if counts["unusable"]:
+        print("%d charts skipped: an opening-range bar missing, or more than %d bars missing after it."
+              % (counts["unusable"], MAX_GAPS))
     if counts["unconfirmed"]:
         print("PARTIAL: %s more candidates were not checked (only the %s most traded are; --max-confirm 0 "
               "checks all)." % ("{:,}".format(counts["unconfirmed"]), "{:,}".format(a.max_confirm)))
