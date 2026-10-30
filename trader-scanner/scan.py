@@ -584,11 +584,15 @@ def orb_hit(bars, n_range):
         b = bars[k]
         if b["c"] > oh:
             closes_at = b["start"] + datetime.timedelta(minutes=BAR_MIN)
+            slot_k = int((b["start"] - bars[0]["start"]).total_seconds() // (BAR_MIN * 60))
             return {"price": round(b["c"], 2), "at": clock_label(closes_at),
                     "bar_start": b["start"].strftime("%H:%M"),
-                    "bar_index": int((b["start"] - bars[0]["start"]).total_seconds() // (BAR_MIN * 60)),
+                    "bar_index": slot_k,
                     "or_high": round(oh, 2), "or_low": round(ol, 2),
-                    "pct_over": round((b["c"] / oh - 1) * 100, 2), "_t": closes_at}
+                    "pct_over": round((b["c"] / oh - 1) * 100, 2), "_t": closes_at,
+                    # bars missing between the range and this bar: one of them could have been
+                    # the real first close above, so the time may be that many bars late
+                    "missing_before": slot_k - k}
     return None
 
 
@@ -951,7 +955,7 @@ def cmd_orb(a):
              (" (%s under the price / volume floor)" % "{:,}".format(counts["illiquid"])) if counts["illiquid"] else "",
              "{:,}".format(counts["candidates"]), "{:,}".format(counts["confirmed"])))
     if counts["with_gaps"]:
-        print("%d of the usable charts had 1 or %d bars missing in Yahoo's data after the range; "
+        print("%d of the usable charts had 1 to %d bars missing in Yahoo's data after the range; "
               "missing bars are skipped." % (counts["with_gaps"], MAX_GAPS))
     if counts["unusable"]:
         print("%d charts skipped: an opening-range bar missing, or more than %d bars missing after it."
@@ -964,8 +968,16 @@ def cmd_orb(a):
               % (len(hits), ("the %s checked" % "{:,}".format(counts["confirmed"])) if counts["unconfirmed"]
                  else "{:,}".format(counts["scanned"]), clock_label(cutoff)))
         for h in hits[:a.show]:
-            print("  %8s  %-6s %10s  range %s to %s  %+.2f%% over" % (
-                h["at"], h["symbol"], money(h["price"]), _p(h["or_low"]), _p(h["or_high"]), h["pct_over"]))
+            mb = h.get("missing_before") or 0
+            print("  %8s  %-6s %10s  range %s to %s  %+.2f%% over%s" % (
+                h["at"], h["symbol"], money(h["price"]), _p(h["or_low"]), _p(h["or_high"]), h["pct_over"],
+                ("  [time uncertain: %d bar%s missing before it]" % (mb, "" if mb == 1 else "s")) if mb else ""))
+        unsure = sum(1 for h in hits if h.get("missing_before"))
+        if unsure:
+            print("%d of the %d hits %s a missing bar before the breakout bar: the real first close above "
+                  "may have come that many 5-minute bars earlier.%s"
+                  % (unsure, len(hits), "has" if unsure == 1 else "have",
+                     "" if unsure == len(hits) else " The other times are exact."))
         if len(hits) > a.show:
             print("  ... and %d more in the watchlist (--show N for more)." % (len(hits) - a.show))
     else:

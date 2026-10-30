@@ -169,12 +169,17 @@ class RealBars(unittest.TestCase):
         self.assertEqual(s.gaps(two, day, cutoff), 2)
         hit = s.orb_hit(two, 3)
         self.assertEqual((hit["price"], hit["at"], hit["bar_index"]), (1174.3, "9:40 AM", 4))
+        self.assertEqual(hit["missing_before"], 0)  # the gaps came after the breakout: time is exact
+        self.assertEqual(s.orb_hit(full, 3)["missing_before"], 0)
         self.assertTrue(s.usable(with_holes(("10:00", "10:30", "10:45")), day, cutoff, 3))  # three is the limit
         self.assertFalse(s.usable(with_holes(("10:00", "10:30", "10:45", "10:50")), day, cutoff, 3))  # too many
         self.assertFalse(s.usable(with_holes(("09:20",)), day, cutoff, 3))  # a range bar missing
         # a missing breakout bar is skipped, never guessed: the next bar above the high is the hit
         hit = s.orb_hit(with_holes(("09:35",)), 3)
-        self.assertEqual(hit["bar_start"], "09:40")
+        self.assertEqual((hit["bar_start"], hit["bar_index"], hit["missing_before"]), ("09:40", 5, 1))
+        code, out = run("trader-scanner/scan.py", "orb", "--offline", NSE, "--now", "2026-10-29 10:15",
+                        "--no-write")
+        self.assertNotIn("time uncertain", out)
 
     def test_timemachine_keeps_sessions_with_empty_closing_bars(self):
         tm = load("trader-timemachine", "timemachine")

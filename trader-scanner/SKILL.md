@@ -98,6 +98,10 @@ A chart is usable when all its opening-range bars (9:15 onward) are there
 and no more than 3 later bars are missing. Yahoo's NSE data leaves an odd
 5-minute bar empty in most stocks on most days; a missing bar is skipped,
 never read as a breakout, and the scan says how many usable charts had gaps.
+A hit with a missing bar between the range and its breakout bar is marked
+`[time uncertain: N bars missing before it]`: the breakout is real, but the
+first close above may have come up to N bars earlier. Hits without the mark
+have exact times. In `--json`, each hit carries `missing_before`.
 A chart missing an opening-range bar is skipped (the range cannot be known). Null closes are
 dropped, a bar off the 5-minute grid (the live tick) is dropped, and a bar
 counts only once it is complete (start + 5 minutes). Before the range is
